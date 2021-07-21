@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+        div{
+            border: 2px solid black;
+            padding: 10px 10px;
+            display: flex;
+            justify-content: center;
+        }
+        #minimap{
+            width: 12%;
+            position: absolute;
+            top: 0px;
+            left: 0px;
+            z-index: 1;
+            margin: 10px 10px;
+        }
+        #render{
+            width: 75%;
+        }
+    </style>
+</head>
+<body>
+    <div>
+        <canvas id = "minimap"></canvas>
+        <canvas id = "render"></canvas>
+    </div>
+    <script>
+        const canvas = document.getElementById('minimap'),
+            render = document.getElementById('render');
+        canvas.width = 400;
+        canvas.height = 400;
+
+        render.width = 600;
+        render.height = 400;
+
+        const context = canvas.getContext('2d'),
+            main = render.getContext('2d');
+
+        const map = [
+            [1,1,1,1,1,1,1,1,1,1],
+            [1,0,0,0,0,1,1,0,0,1],
+            [1,0,0,0,0,0,0,0,0,1],
+            [1,0,1,1,0,1,1,0,0,1],
+            [1,0,1,1,0,1,1,0,0,1],
+            [1,0,0,0,0,1,0,0,0,1],
+            [1,0,0,0,0,0,0,0,1,1],
+            [1,1,0,0,1,1,1,0,1,1],
+            [1,1,0,0,0,0,1,0,1,1],
+            [1,1,1,1,1,1,1,1,1,1],
+        ];
+
+        const Scale = canvas.width / map.length,
+            FPS = 1000/60,
+            MovementSpeed = .7,
+            RotationSpeed = 2,
+            POV = 60;
+
+        var player = {x: 120, y: 300, angle: 45, draw: function(){
+            context.beginPath();
+            [context.fillStyle,context.strokeStyle] = ["rgb(0,255,0)","rgb(0,0,255)"];
+
+            if(this.angle > 360 || this.angle < 0)
+                this.angle = Math.abs(Math.abs(this.angle% 360)  + (this.angle > 0 ? 0:-1)* 360);
+
+            context.moveTo(this.x, this.y);
+            context.lineTo(
+                Math.cos(-(this.angle + POV/2) * Math.PI / 180) * 1000  + this.x,
+                Math.sin(-(this.angle + POV/2) * Math.PI / 180) * 1000 + this.y
+            );
+            context.moveTo(this.x, this.y);
+            context.lineTo(
+                Math.cos(-(this.angle - POV/2) * Math.PI / 180) * 1000  + this.x,
+                Math.sin(-(this.angle - POV/2) * Math.PI / 180) * 1000 + this.y
+            );
+
+            context.fillRect(this.x-5, this.y-5, 5, 5);
+            context.fillRect(this.x, this.y, 5, 5);
+
+            context.fillRect(this.x, this.y-5, 5, 5);
+            context.fillRect(this.x-5, this.y, 5, 5);
+
+            context.stroke();
+        }};
+
+        document.addEventListener('keypress', player_input);
+
+        function player_input(key) {
+            switch(key.code)
+            {
+            case 'KeyD':
+                player.x += MovementSpeed * Math.sin(player.angle * Math.PI/180);
+                player.y += MovementSpeed * Math.cos(player.angle * Math.PI/180);
+            break;
+            case 'KeyA': 
+                player.x += -MovementSpeed * Math.sin(player.angle * Math.PI/180);
+                player.y += -MovementSpeed * Math.cos(player.angle * Math.PI/180);
+            break;
+            case 'KeyW': 
+                player.x += MovementSpeed * Math.cos(player.angle * Math.PI/180);
+                player.y += -MovementSpeed * Math.sin(player.angle * Math.PI/180);
+            break;
+            case 'KeyS': 
+                player.x += -MovementSpeed * Math.cos(player.angle * Math.PI/180);
+                player.y += MovementSpeed * Math.sin(player.angle * Math.PI/180);
+            break;
+
+            case 'KeyQ': player.angle += RotationSpeed; break;
+            case 'KeyE': player.angle -= RotationSpeed; break;
+            }
+        }
+
+        function ray_cast(angle)
+        {            
+            angle = angle * Math.PI / 180;
+            let triggerY = false, triggerX = false;
+            let OX = {x:0, y:0},OY = {x:0, y:0};
+
+            let draw_point = (x, y, style) => {
+                context.beginPath();
+                context.strokeStyle = style;
+                context.moveTo(player.x, player.y);
+                context.lineTo((x?x:player.x),(y?y:player.y));
+                context.stroke();
+            }
+
+            for(let i = 0; i <= canvas.width / Scale; i++)
+            {
+                // ось X построение точек:
+
+                let Xa = Math.abs((player.x % Scale) + (Math.cos(angle) > 0 ? -Scale: 0)) + i * Scale;
+                let Xb = Math.abs(Math.tan(angle)) * Xa;
+
+                let Xx = player.x + (Math.cos(angle) > 0 ? Xa: -Xa) ,
+                    Xy = player.y + (Math.sin(angle) > 0 ? -Xb: Xb) ;
+
+                // ось Y построение точек:
+                
+                let Ya = Math.abs(player.y % Scale + (Math.sin(angle) > 0 ? 0: -Scale)) + i * Scale;
+                let Yb = Ya / Math.abs(Math.tan(angle));
+
+                let Yx = player.x + (Math.cos(angle) > 0?Yb:-Yb),
+                    Yy = player.y + (Math.sin(angle) > 0? -Ya:Ya); 
+
+                if(Yy < canvas.width && Yy > 0 && Yx < canvas.width && Yx > 0)
+                {
+                    if(Math.sin(angle) >= 0)
+                    {
+                        if(map[Yy / Scale - 1][Math.floor(Yx/Scale)] && !triggerY)
+                        {
+                            OY.x = Yx; OY.y = Yy;
+                            triggerY = true;
+                        }
+                    }
+                    else
+                    {
+                        if(map[Yy/Scale][Math.floor(Yx/Scale)]  && !triggerY)
+                        {
+                            OY.x = Yx; OY.y = Yy;
+                            triggerY = true;
+                        }
+                    }
+                }
+
+                if(Xy < canvas.width && Xy > 0 && Xx < canvas.width && Xx > 0)
+                {
+                    if(Math.cos(angle) >= 0)
+                    {
+                        if(map[Math.floor(Xy/Scale)][Xx / Scale] && !triggerX)
+                        {
+                            triggerX = true;
+                            OX.x = Xx; OX.y = Xy;
+                        }
+                    } 
+                    else
+                    {
+                        if(map[Math.floor(Xy/Scale)][Xx/Scale - 1] && !triggerX)
+                        {
+                            triggerX = true;
+                            OX.x = Xx; OX.y = Xy;
+                        }
+                    }
+                }
+            }
+
+            let distX = Math.sqrt(Math.pow(player.x - (OX.x?OX.x:player.x), 2) 
+                + Math.pow(player.y - (OX.y?OX.y:player.y), 2)),
+                distY = Math.sqrt(Math.pow(player.x - (OY.x?OY.x:player.x), 2) 
+                + Math.pow(player.y - (OY.y?OY.y:player.y), 2));
+
+            let dist = (distY < distX)? (distY ? distY : distX): (distX ? distX : distY);
+            
+            if(dist == distY) draw_point(OY.x,OY.y, 'rgb(255,0,0)');
+            else if(dist == distX) draw_point(OX.x,OX.y, 'rgb(255,0,0)');
+
+            return dist;
+        }
+
+        function draw_map()
+        {
+            context.beginPath();
+            [context.strokeStyle,context.fillStyle] = ["rgb(0,0,0)", "rgb(0,0,0)"];
+            for(let y = 0; y < canvas.width / Scale; y++)
+            {
+                for(let x = 0; x < canvas.width / Scale; x++)
+                {
+                    if(map[y][x] == 1)
+                        context.fillRect(x*Scale, y*Scale,Scale, Scale);   
+                    else context.rect(x*Scale, y*Scale,Scale, Scale);
+                }
+            }
+
+            context.stroke();
+        }
+
+        function render_logic()
+        {
+            let dists = []
+            for(let i = player.angle + POV / 2; i >= player.angle - POV/2; i-=(1/4))//<- shish
+                dists.push(ray_cast(i));
+
+            for(let i = 0; i < dists.length; i++)
+            {
+                if(dists[i] <= 255 && dists[i])
+                {
+                    let h = 400 -(400/255*dists[i]),
+                        a = (400 - h)/2;
+
+                    main.beginPath();
+                    main.fillStyle = `rgb(${dists[i]},${dists[i]},${dists[i]})`;
+                    main.fillRect(i*10/4, a, 10/4, h);
+                }
+            }
+        }
+        
+        function main_loop()
+        {
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            main.clearRect(0, 0, render.width, render.height);
+            
+            render_logic();
+            player.draw();
+            draw_map();
+        }
+
+        main_loop();
+        setInterval(main_loop, FPS);
+        
+    </script>
+</body>
+</html>
